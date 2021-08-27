@@ -5,35 +5,7 @@ package gogo
 
 import (
 	"fmt"
-	"syscall"
 	"unsafe"
-)
-
-var (
-	g_kernel32 = syscall.MustLoadDLL("kernel32.dll")
-
-	g_openProcess = g_kernel32.MustFindProc("OpenProcess")
-
-	g_createToolhelp32Snapshot = g_kernel32.MustFindProc("CreateToolhelp32Snapshot")
-
-	g_process32First = g_kernel32.MustFindProc("Process32First")
-	g_process32Next  = g_kernel32.MustFindProc("Process32Next")
-
-	g_module32First = g_kernel32.MustFindProc("Module32First")
-	g_module32Next  = g_kernel32.MustFindProc("Module32Next")
-
-	g_readProcessMemory  = g_kernel32.MustFindProc("ReadProcessMemory")
-	g_writeProcessMemory = g_kernel32.MustFindProc("WriteProcessMemory")
-)
-
-const (
-	//	open process
-	PROCESS_ALL_ACCESS = 0x1FFFFF
-
-	//	toolhelp snapshot
-	TH32CS_SNAPMODULE   = 0x8
-	TH32CS_SNAPMODULE32 = 0x10
-	TH32CS_SNAPALL      = 0xF
 )
 
 //	process structure
@@ -62,11 +34,11 @@ type ProcessEntry32 struct {
 
 //	process helpers
 func getPid(name string) uint32 {
-	handle, _, _ := g_createToolhelp32Snapshot.Call(TH32CS_SNAPALL, 0)
+	handle, _, _ := gCreateToolhelp32Snapshot.Call(kTh32csSnapAll, 0)
 
 	processEntry := ProcessEntry32{entrySize: 304}
 
-	for state, _, _ := g_process32First.Call(handle, uintptr(unsafe.Pointer(&processEntry))); state != 0; state, _, _ = g_process32Next.Call(handle, uintptr(unsafe.Pointer(&processEntry))) {
+	for state, _, _ := gProcess32First.Call(handle, uintptr(unsafe.Pointer(&processEntry))); state != 0; state, _, _ = gProcess32Next.Call(handle, uintptr(unsafe.Pointer(&processEntry))) {
 		currentName := stringify(processEntry.name[:])
 
 		if name == currentName {
@@ -87,7 +59,7 @@ func getProcess(name string) *Process {
 		panic(fmt.Sprintf("Epicly failed: Failed grabbing process %s's PID (SUS!)", obj.name))
 	}
 
-	handle, _, _ := g_openProcess.Call(PROCESS_ALL_ACCESS, 0, uintptr(obj.pid))
+	handle, _, _ := gOpenProcess.Call(kProcessAllAccess, 0, uintptr(obj.pid))
 
 	if handle == 0 {
 		panic(fmt.Sprintf("Epicly failed: Failed grabbing handle of process %s with PID %x (IMPOSTOR!)", obj.name, obj.pid))
@@ -95,7 +67,7 @@ func getProcess(name string) *Process {
 
 	obj.handle = handle
 
-	modulesSnap, _, _ := g_createToolhelp32Snapshot.Call(TH32CS_SNAPMODULE|TH32CS_SNAPMODULE32, uintptr(obj.pid))
+	modulesSnap, _, _ := gCreateToolhelp32Snapshot.Call(kTh32csSnapModule|kTh32csSnapModule32, uintptr(obj.pid))
 
 	if handle == 0 {
 		panic(fmt.Sprintf("Epicly failed: Failed grabbing modules snapshot of process %s with PID %x (IMPOSTOR!)", obj.name, obj.pid))
@@ -123,7 +95,7 @@ type ModuleEntry32 struct {
 func (process *Process) getModule(name string) (*uint8, uint32) {
 	moduleEntry := ModuleEntry32{entrySize: 568}
 
-	for state, _, _ := g_module32First.Call(process.modulesSnap, uintptr(unsafe.Pointer(&moduleEntry))); state != 0; state, _, _ = g_module32Next.Call(process.modulesSnap, uintptr(unsafe.Pointer(&moduleEntry))) {
+	for state, _, _ := gModule32First.Call(process.modulesSnap, uintptr(unsafe.Pointer(&moduleEntry))); state != 0; state, _, _ = gModule32Next.Call(process.modulesSnap, uintptr(unsafe.Pointer(&moduleEntry))) {
 		currentName := stringify(moduleEntry.name[:])
 
 		if name == currentName {
@@ -138,7 +110,7 @@ func (process *Process) readMemory(size uint32, at uintptr) unsafe.Pointer {
 	var address byte
 	addressPtr := unsafe.Pointer(&address)
 
-	state, _, _ := g_readProcessMemory.Call(uintptr(process.handle), at, uintptr(addressPtr), uintptr(size))
+	state, _, _ := gReadProcessMemory.Call(uintptr(process.handle), at, uintptr(addressPtr), uintptr(size))
 
 	if state == 0 {
 		panic(fmt.Sprintf("Epicly failed: RPM at %x is SUS!", at))
@@ -153,7 +125,7 @@ func (process *Process) readMemoryDll(dll *Dll, size uint32, ptrdiff uintptr) un
 
 func (process *Process) writeMemory(into uintptr, size uint32, at uintptr) {
 	addressPtr := uintptr(unsafe.Pointer(&into))
-	state, _, _ := g_writeProcessMemory.Call(uintptr(process.handle), at, addressPtr, uintptr(size))
+	state, _, _ := gWriteProcessMemory.Call(uintptr(process.handle), at, addressPtr, uintptr(size))
 
 	if state == 0 {
 		panic(fmt.Sprintf("Epicly failed: WPM at %x is SUS!", at))
