@@ -12,7 +12,7 @@ type Context struct {
 }
 
 func (context *Context) getPlayer() *Player {
-	return (*Player)(dereference(context.playerPtr))
+	return *(**Player)(context.playerPtr)
 }
 
 func MakeContext() *Context {
@@ -21,7 +21,7 @@ func MakeContext() *Context {
 	obj.csgo = getProcess("csgo.exe")
 	obj.client = obj.csgo.getDll("client.dll")
 
-	obj.playerPtr = obj.csgo.readMemoryDll(obj.client, 4, 0xD8A2DC)
+	obj.playerPtr = obj.csgo.readMemory(4, uintptr(dereference(obj.csgo.patternScan(obj.client, []byte("\x83\x3D\xCC\xCC\xCC\xCC\xCC\x75\x68\x8B\x0D\xCC\xCC\xCC\xCC\x8B\x01"), 2))))
 
 	return &obj
 }

@@ -57,12 +57,14 @@ func getProcess(name string) *Process {
 
 	if obj.pid == 0 {
 		panic(fmt.Sprintf("Epicly failed: Failed grabbing process %s's PID (SUS!)", obj.name))
+		return nil
 	}
 
 	handle, _, _ := gOpenProcess.Call(kProcessAllAccess, 0, uintptr(obj.pid))
 
 	if handle == 0 {
 		panic(fmt.Sprintf("Epicly failed: Failed grabbing handle of process %s with PID %x (IMPOSTOR!)", obj.name, obj.pid))
+		return nil
 	}
 
 	obj.handle = handle
@@ -71,6 +73,7 @@ func getProcess(name string) *Process {
 
 	if handle == 0 {
 		panic(fmt.Sprintf("Epicly failed: Failed grabbing modules snapshot of process %s with PID %x (IMPOSTOR!)", obj.name, obj.pid))
+		return nil
 	}
 
 	obj.modulesSnap = modulesSnap
@@ -110,10 +113,11 @@ func (process *Process) readMemory(size uint32, at uintptr) unsafe.Pointer {
 	var address byte
 	addressPtr := unsafe.Pointer(&address)
 
-	state, _, _ := gReadProcessMemory.Call(uintptr(process.handle), at, uintptr(addressPtr), uintptr(size))
+	state, _, _ := gReadProcessMemory.Call(uintptr(process.handle), at, uintptr(addressPtr), uintptr(size), 0)
 
 	if state == 0 {
 		panic(fmt.Sprintf("Epicly failed: RPM at %x is SUS!", at))
+		return nil
 	}
 
 	return addressPtr
@@ -123,9 +127,8 @@ func (process *Process) readMemoryDll(dll *Dll, size uint32, ptrdiff uintptr) un
 	return process.readMemory(size, uintptr(unsafe.Pointer(dll.base))+ptrdiff)
 }
 
-func (process *Process) writeMemory(into uintptr, size uint32, at uintptr) {
-	addressPtr := uintptr(unsafe.Pointer(&into))
-	state, _, _ := gWriteProcessMemory.Call(uintptr(process.handle), at, addressPtr, uintptr(size))
+func (process *Process) writeMemory(into unsafe.Pointer, size uint32, at uintptr) {
+	state, _, _ := gWriteProcessMemory.Call(uintptr(process.handle), at, uintptr(into), uintptr(size))
 
 	if state == 0 {
 		panic(fmt.Sprintf("Epicly failed: WPM at %x is SUS!", at))
@@ -140,6 +143,7 @@ func (process *Process) getDll(name string) *Dll {
 
 	if base == nil || size == 0 {
 		panic(fmt.Sprintf("Epicly failed: Module %s is SUS!", name))
+		return nil
 	}
 
 	obj.base = base
@@ -155,4 +159,38 @@ func dereference(ptr unsafe.Pointer) unsafe.Pointer {
 	return unsafe.Pointer(*(*uintptr)(ptr))
 }
 
-//	@TODO: implement pattern scanner once vsc doesn't delete random characters anymore
+func (process *Process) patternScan(dll *Dll, sig []byte, pad int) unsafe.Pointer {
+	arrayLength := len(sig)
+
+	for i := 0x1000; i < int(dll.size) - arrayLength; i++ {
+		found := true
+
+		for j := 0; j < arrayLength; j++ {
+			//	@TODO: Read whole chunks. This is horrendously slow. Anywho, it works, for now.
+			current := process.readMemoryDll(dll, 1, uintptr(i + j))
+
+			if current == nil {
+				continue
+			}
+
+			opcode := *(*byte)(current)
+
+			if opcode != sig[j] && sig[j] != 0xCC {
+				found = false
+				break
+			}
+		}
+
+		if found {
+			result := process.readMemoryDll(dll,4, uintptr(i + pad))
+
+			if result == nil {
+				continue
+			}
+
+			return result
+		}
+	}
+
+	return nil
+}
