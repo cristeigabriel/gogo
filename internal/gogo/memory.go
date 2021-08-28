@@ -113,7 +113,7 @@ func (process *Process) readMemory(size uint32, at uintptr) unsafe.Pointer {
 	var address byte
 	addressPtr := unsafe.Pointer(&address)
 
-	state, _, _ := gReadProcessMemory.Call(uintptr(process.handle), at, uintptr(addressPtr), uintptr(size), 0)
+	state, _, _ := gReadProcessMemory.Call(process.handle, at, uintptr(addressPtr), uintptr(size), 0)
 
 	if state == 0 {
 		panic(fmt.Sprintf("Epicly failed: RPM at %x is SUS!", at))
@@ -128,7 +128,7 @@ func (process *Process) readMemoryDll(dll *Dll, size uint32, ptrdiff uintptr) un
 }
 
 func (process *Process) writeMemory(into unsafe.Pointer, size uint32, at uintptr) {
-	state, _, _ := gWriteProcessMemory.Call(uintptr(process.handle), at, uintptr(into), uintptr(size))
+	state, _, _ := gWriteProcessMemory.Call(process.handle, at, uintptr(into), uintptr(size))
 
 	if state == 0 {
 		panic(fmt.Sprintf("Epicly failed: WPM at %x is SUS!", at))
@@ -161,34 +161,44 @@ func dereference(ptr unsafe.Pointer) unsafe.Pointer {
 
 func (process *Process) patternScan(dll *Dll, sig []byte, pad int) unsafe.Pointer {
 	arrayLength := len(sig)
+	scanLength := int(dll.size) - arrayLength
 
-	for i := 0x1000; i < int(dll.size) - arrayLength; i++ {
-		found := true
-
-		for j := 0; j < arrayLength; j++ {
-			//	@TODO: Read whole chunks. This is horrendously slow. Anywho, it works, for now.
-			current := process.readMemoryDll(dll, 1, uintptr(i + j))
-
-			if current == nil {
-				continue
-			}
-
-			opcode := *(*byte)(current)
-
-			if opcode != sig[j] && sig[j] != 0xCC {
-				found = false
-				break
-			}
+	for i := 0x1000; i < scanLength; i += 0x1000 {
+		if i >= (scanLength - 0x1000) {
+			break
 		}
 
-		if found {
-			result := process.readMemoryDll(dll,4, uintptr(i + pad))
+		current := process.readMemoryDll(dll, 0x1000, uintptr(i))
 
-			if result == nil {
-				continue
+		//	page is unreadable, don't care
+		if current == nil {
+			continue
+		}
+
+		//	read whole chonker
+		bm := *(*[0x1000]byte)(current)
+
+		//	run over every byte
+		for j := 0; j < 0x1000 - arrayLength; j++ {
+			for k := 0; k < arrayLength; k++ {
+				opcode := bm[j+k]
+				if opcode != sig[k] && sig[k] != 0xCC {
+					break
+				} else {
+					//	end of scan, still there?
+					if k == (arrayLength - 1) {
+						fmt.Printf("%d\n", i + j +pad)
+						result := process.readMemoryDll(dll,4, uintptr(i + j + pad))
+
+						//	result should be readable (and valid)
+						if result == nil {
+							continue
+						}
+
+						return result
+					}
+				}
 			}
-
-			return result
 		}
 	}
 
