@@ -163,41 +163,42 @@ func (process *Process) patternScan(dll *Dll, sig []byte, pad int) unsafe.Pointe
 	arrayLength := len(sig)
 	scanLength := int(dll.size) - arrayLength
 
-	for i := 0x1000; i < scanLength; i += 0x1000 {
-		if i >= (scanLength - 0x1000) {
-			break
-		}
-
-		current := process.readMemoryDll(dll, 0x1000, uintptr(i))
+	//	skip first and last page
+	for i := kPageSize; i < scanLength-kPageSize; i += kPageSize {
+		//	read whole page
+		current := process.readMemoryDll(dll, kPageSize, uintptr(i))
 
 		//	page is unreadable, don't care
 		if current == nil {
 			continue
 		}
 
-		//	read whole chonker
-		bm := *(*[0x1000]byte)(current)
+		//	buffer
+		buffer := *(*[kPageSize]byte)(current)
 
 		//	run over every byte
-		for j := 0; j < 0x1000 - arrayLength; j++ {
+		for j := 0; j < kPageSize-arrayLength; j++ {
+			found := true
 			for k := 0; k < arrayLength; k++ {
-				opcode := bm[j+k]
+				opcode := buffer[j+k]
 				if opcode != sig[k] && sig[k] != 0xCC {
+					found = false
 					break
-				} else {
-					//	end of scan, still there?
-					if k == (arrayLength - 1) {
-						fmt.Printf("%d\n", i + j +pad)
-						result := process.readMemoryDll(dll,4, uintptr(i + j + pad))
-
-						//	result should be readable (and valid)
-						if result == nil {
-							continue
-						}
-
-						return result
-					}
 				}
+			}
+
+			if found {
+				//	Unless we do this, the process will literally fail
+				fmt.Printf("Found signature at base+%x\n", i+j+pad)
+
+				result := process.readMemoryDll(dll, 4, uintptr(i+j+pad))
+
+				//	result should be readable (and valid)
+				if result == nil {
+					continue
+				}
+
+				return result
 			}
 		}
 	}

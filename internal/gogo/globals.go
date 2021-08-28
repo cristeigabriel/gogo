@@ -31,4 +31,7 @@ const (
 	kTh32csSnapModule   = 0x8
 	kTh32csSnapModule32 = 0x10
 	kTh32csSnapAll      = 0xF
+
+	//	general
+	kPageSize = 0x1000
 )

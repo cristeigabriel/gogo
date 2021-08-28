@@ -1,6 +1,7 @@
 package gogo
 
 import (
+	"fmt"
 	"unsafe"
 )
 
@@ -26,6 +27,7 @@ func MakeContext() *Context {
 }
 
 func (context *Context) Run() {
+	fmt.Printf("%d\n", context.getPlayer().getHealth())
 	for {
 	}
 }
