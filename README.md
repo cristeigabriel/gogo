@@ -1,6 +1,9 @@
 # gogo
 Golang CS:GO External cheat/base. Also, my first Golang project.
 
+# Wait!
+Development momentarily halted due to compiler/runtime bugs.
+
 # Disclaimer
 This is a disclaimer to indicate that the project is currently in an INCREDIBLY early stage! Please don't use it (yet). Wait until this disclaimer is removed, and replaced with a features list. Thanks!
 (This was pushed as early as now to serve as a reminder (and motivator) to me.
